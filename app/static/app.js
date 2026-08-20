@@ -186,21 +186,49 @@ function renderWire(card, plan) {
   wire.hidden = false;
 }
 
-function renderFigures(card, plan) {
+function renderFigures(card, plan, live, analysing) {
   const figures = card.querySelector("[data-figures]");
-  if (!plan || plan.empty) { figures.hidden = true; return; }
 
-  card.querySelector("[data-fig-moved]").textContent = count(plan.moved);
-  const uploads = card.querySelector("[data-fig-transfers]");
-  uploads.textContent = count(plan.transfers);
-  uploads.disabled = plan.transfers === 0;
-  card.querySelector("[data-fig-transfers-wrap]").classList.toggle("is-zero", plan.transfers === 0);
-  card.querySelector("[data-fig-checks]").textContent = count(plan.checks);
+  // During an analysis the tiles count live, fed by the engine log and
+  // stats; the full lists do not exist yet, so the drill-down buttons stay
+  // disabled. Once the analysis is done, the plan's totals take over.
+  // (An earlier fix simply hid the tiles while analysing; production
+  // feedback asked for live counters instead.)
+  let moved, uploads, deletes, checks, drillable;
+  if (analysing) {
+    const l = live || {};
+    moved = Number(l.renames || 0);
+    uploads = Number(l.seen_copies || 0);
+    deletes = Number(l.seen_deletes || 0);
+    checks = Number(l.checks || 0);
+    drillable = false;
+    // Inventory just started: four zero tiles would only add noise.
+    if (checks === 0 && moved === 0 && uploads === 0 && deletes === 0) {
+      figures.hidden = true;
+      return;
+    }
+  } else if (plan) {
+    moved = plan.moved;
+    uploads = plan.transfers;
+    deletes = plan.deletes;
+    checks = plan.checks;
+    drillable = true;
+  } else {
+    figures.hidden = true;
+    return;
+  }
 
-  const deletes = card.querySelector("[data-fig-deletes]");
-  deletes.textContent = count(plan.deletes);
-  deletes.disabled = plan.deletes === 0;
-  card.querySelector("[data-fig-deletes-wrap]").classList.toggle("is-zero", plan.deletes === 0);
+  card.querySelector("[data-fig-moved]").textContent = count(moved);
+  const upBtn = card.querySelector("[data-fig-transfers]");
+  upBtn.textContent = count(uploads);
+  upBtn.disabled = !drillable || uploads === 0;
+  card.querySelector("[data-fig-transfers-wrap]").classList.toggle("is-zero", uploads === 0);
+  card.querySelector("[data-fig-checks]").textContent = count(checks);
+
+  const delBtn = card.querySelector("[data-fig-deletes]");
+  delBtn.textContent = count(deletes);
+  delBtn.disabled = !drillable || deletes === 0;
+  card.querySelector("[data-fig-deletes-wrap]").classList.toggle("is-zero", deletes === 0);
 
   figures.hidden = false;
 }
@@ -331,9 +359,8 @@ function renderLive(card, id, phase, live, elapsedServer, plan) {
       ? `<b>${count(checks)}</b> / ${approx ? "~" : ""}${count(denom)} comparisons`
         + `${pct !== null ? ` · ${pct}%` : ""}`
       : `<b>${count(checks)}</b> comparisons`);
-    if (l.renames) bits.push(`<span class="n-free">${count(l.renames)} moves</span>`);
-    if (l.seen_copies) bits.push(`<span class="n-send">${count(l.seen_copies)} to upload</span>`);
-    if (l.seen_deletes) bits.push(`<span class="n-cut">${count(l.seen_deletes)} deletions</span>`);
+    // Moves, uploads and deletions now live in the figure tiles above;
+    // repeating them here would say everything twice.
   } else {
     // Inventory phase: no comparison and no percentage possible, show what
     // actually moves to prove the machine is advancing.
@@ -391,7 +418,7 @@ function renderCard(profile) {
 
   renderVerdict(card, st.plan);
   renderWire(card, st.plan);
-  renderFigures(card, st.plan);
+  renderFigures(card, st.plan, st.live, st.phase === "analysis");
   renderLive(card, profile.id, st.phase, st.live, st.elapsed, st.plan);
 
   const blocked = card.querySelector("[data-blocked]");
@@ -622,6 +649,9 @@ async function loadHistory() {
 
     runs.forEach((r) => {
       const [label, cls] = STATUS[r.status] || [r.status, "tag--run"];
+      // An analysis executes nothing: showing its findings under action
+      // columns (Moved/Uploaded/Deleted) read as if files had been touched.
+      const isAnalysis = r.kind === "analysis";
       const tr = document.createElement("tr");
       tr.className = "log__line";
       // The profile name is free text: injected as-is into the HTML, a name
@@ -630,10 +660,10 @@ async function loadHistory() {
         <td>${when(r.started_at)}</td>
         <td data-cell-name></td>
         <td>${r.kind === "analysis" ? "Analysis" : "Transfer"}</td>
-        <td class="num moved">${count(r.moved)}</td>
-        <td class="num sent">${count(r.transferred)}</td>
-        <td class="num ${r.deleted ? "cut" : ""}">${count(r.deleted)}</td>
-        <td class="num">${r.kind === "analysis" ? "—" : bytes(r.bytes)}</td>
+        <td class="num ${isAnalysis ? "" : "moved"}">${isAnalysis ? "—" : count(r.moved)}</td>
+        <td class="num ${isAnalysis ? "" : "sent"}">${isAnalysis ? "—" : count(r.transferred)}</td>
+        <td class="num ${!isAnalysis && r.deleted ? "cut" : ""}">${isAnalysis ? "—" : count(r.deleted)}</td>
+        <td class="num">${isAnalysis ? "—" : bytes(r.bytes)}</td>
         <td class="num">${duration(r.duration_s)}</td>
         <td><span class="tag ${cls}">${label}</span></td>`;
       tr.querySelector("[data-cell-name]").textContent = r.profile_name;
