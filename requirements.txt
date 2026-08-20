@@ -1,0 +1,11 @@
+# Coeur de l'application
+fastapi==0.115.6
+uvicorn==0.34.0
+httpx==0.28.1
+PyYAML==6.0.2
+
+# Interface bureau : fenetre native et icone de notification.
+# Sans elles l'application fonctionne, mais s'ouvre dans le navigateur.
+pywebview==5.3.2
+pystray==0.19.5
+pillow==11.0.0

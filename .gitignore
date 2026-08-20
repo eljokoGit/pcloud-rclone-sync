@@ -1,0 +1,13 @@
+# Python
+__pycache__/
+*.pyc
+
+# Local runtime environment created by the launcher
+runtime/
+
+# Logs and crash reports
+logs/
+startup-error.log
+
+# The user's own settings; created from config.example.yaml on first launch
+config.yaml

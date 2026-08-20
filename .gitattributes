@@ -1,0 +1,13 @@
+# Normalize text files to LF in the repository
+* text=auto
+
+# cmd.exe breaks on LF batch files: force CRLF on checkout everywhere
+*.bat text eol=crlf
+
+# Binary assets
+*.png binary
+*.ico binary
+
+# Git metadata is not needed in release archives
+.gitattributes export-ignore
+.gitignore export-ignore

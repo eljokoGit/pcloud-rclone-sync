@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>pCloud Sync</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<header class="masthead">
+  <div class="masthead__id">
+    <h1>pCloud&nbsp;Sync</h1>
+    <p class="masthead__sub">Backup that recognizes moved files</p>
+  </div>
+
+  <div class="masthead__meters">
+    <div class="meter">
+      <span class="meter__label">Moved, not re-uploaded</span>
+      <span class="meter__value" id="meter-spared">&mdash;</span>
+      <span class="meter__unit">files repositioned by the server since installation</span>
+    </div>
+    <button class="btn btn--go" id="add-profile" type="button">Add a backup</button>
+    <div class="engine" id="engine">
+      <span class="engine__dot" aria-hidden="true"></span>
+      <span class="engine__text">Connecting to the engine</span>
+    </div>
+  </div>
+</header>
+
+<main>
+  <section id="profiles" class="profiles" aria-live="polite"></section>
+
+  <div class="blank" id="blank" hidden>
+    <h2>No backup configured</h2>
+    <p>Pick a whole drive or a specific folder, choose where to send it
+       on pCloud, and the application takes care of the rest.</p>
+    <button class="btn btn--go" id="add-first" type="button">Add a backup</button>
+  </div>
+
+  <section class="log">
+    <div class="log__head">
+      <h2>Runs</h2>
+      <div class="log__btns">
+        <button class="btn btn--ghost" id="refresh-history" type="button">Refresh</button>
+        <button class="btn btn--ghost" id="clear-history" type="button">Clear history</button>
+      </div>
+    </div>
+    <div class="log__wrap">
+      <table class="log__table">
+        <thead>
+          <tr>
+            <th scope="col">When</th>
+            <th scope="col">Profile</th>
+            <th scope="col">Type</th>
+            <th scope="col" class="num">Moved</th>
+            <th scope="col" class="num">Uploaded</th>
+            <th scope="col" class="num">Deleted</th>
+            <th scope="col" class="num">Over the network</th>
+            <th scope="col" class="num">Duration</th>
+            <th scope="col">Status</th>
+            <th scope="col"><span class="sr">Actions</span></th>
+          </tr>
+        </thead>
+        <tbody id="history"></tbody>
+      </table>
+    </div>
+  </section>
+</main>
+
+<aside class="drawer" id="drawer" hidden>
+  <div class="drawer__panel" role="dialog" aria-modal="true" aria-labelledby="drawer-title">
+    <div class="drawer__head">
+      <h2 id="drawer-title">Planned deletions</h2>
+      <button class="btn btn--ghost" id="drawer-close" type="button">Close</button>
+    </div>
+    <div class="drawer__body" id="drawer-body"></div>
+  </div>
+</aside>
+
+<div class="toast" id="toast" hidden></div>
+
+<template id="tpl-profile">
+  <article class="card" data-card>
+    <div class="card__head">
+      <div>
+        <h2 class="card__name" data-name></h2>
+        <p class="card__paths">
+          <span class="path" data-local></span>
+          <span class="path__arrow" aria-hidden="true">→</span>
+          <span class="path" data-remote></span>
+        </p>
+      </div>
+      <div class="card__timing">
+        <span data-schedule></span>
+        <span data-lastrun></span>
+      </div>
+    </div>
+
+    <ol class="rail" data-rail>
+      <li class="rail__step" data-step="analysis"><span>Analysis</span></li>
+      <li class="rail__step" data-step="validation"><span>Validation</span></li>
+      <li class="rail__step" data-step="transfer"><span>Transfer</span></li>
+    </ol>
+
+    <p class="card__status" data-status></p>
+
+    <p class="verdict" data-verdict hidden></p>
+
+    <div class="wire" data-wire hidden>
+      <div class="wire__track wire__track--free" data-track-free>
+        <span class="wire__tick" data-free-label></span>
+      </div>
+      <div class="wire__track wire__track--send" data-track-send>
+        <span class="wire__fill" data-send-fill></span>
+        <span class="wire__tick" data-send-label></span>
+      </div>
+      <div class="wire__legend">
+        <span class="key key--free">moved by pCloud, free</span>
+        <span class="key key--send">uploaded from your machine</span>
+      </div>
+    </div>
+
+    <dl class="figures" data-figures hidden>
+      <div class="figure figure--free">
+        <dt>Moved by pCloud</dt>
+        <dd data-fig-moved>0</dd>
+      </div>
+      <div class="figure figure--send" data-fig-transfers-wrap>
+        <dt>To upload from your PC</dt>
+        <dd><button type="button" class="linkish" data-fig-transfers>0</button></dd>
+      </div>
+      <div class="figure figure--cut" data-fig-deletes-wrap>
+        <dt>Deleted from the cloud</dt>
+        <dd><button type="button" class="linkish" data-fig-deletes>0</button></dd>
+      </div>
+      <div class="figure">
+        <dt>Files checked</dt>
+        <dd data-fig-checks>0</dd>
+      </div>
+    </dl>
+
+    <div class="live" data-live hidden>
+      <div class="live__head">
+        <span class="pulse" data-pulse aria-hidden="true"><i></i><i></i><i></i></span>
+        <span class="live__what" data-live-what></span>
+        <span class="live__clock" data-live-clock></span>
+      </div>
+      <div class="live__bar" data-live-bar hidden>
+        <span data-live-fill></span>
+      </div>
+      <div class="live__row" data-live-row></div>
+      <ul class="live__files" data-live-files></ul>
+    </div>
+
+    <p class="notice" data-blocked hidden></p>
+    <p class="notice notice--error" data-error hidden></p>
+
+    <div class="card__actions">
+      <button class="btn" data-act="analyse" type="button">Analyze</button>
+      <button class="btn btn--go" data-act="sync" type="button" hidden>Start transfer</button>
+      <button class="btn btn--ghost" data-act="run" type="button">Analyze then transfer</button>
+      <button class="btn btn--stop" data-act="cancel" type="button" hidden>Stop</button>
+      <span class="card__spacer"></span>
+      <button class="btn btn--ghost" data-act="edit" type="button">Edit</button>
+      <button class="btn btn--ghost" data-act="delete" type="button">Delete</button>
+    </div>
+  </article>
+</template>
+
+
+<div class="modal" id="wizard" hidden>
+  <div class="modal__panel" role="dialog" aria-modal="true" aria-labelledby="wz-title">
+
+    <div class="modal__head">
+      <h2 id="wz-title">Add a backup</h2>
+      <button class="btn btn--ghost" data-wz-close type="button">Close</button>
+    </div>
+
+    <ol class="steps" id="wz-steps">
+      <li data-wstep="1" class="is-active"><span>What to back up</span></li>
+      <li data-wstep="2"><span>Where to send it</span></li>
+      <li data-wstep="3"><span>Settings</span></li>
+    </ol>
+
+    <div class="modal__body">
+
+      <!-- 1. source -->
+      <section data-wpane="1">
+        <p class="hint">Tick a whole drive, or drill down the tree to take a
+           single folder. Several selections create several backups.</p>
+        <nav class="crumbs" id="wz-local-crumbs"></nav>
+        <ul class="picker" id="wz-local-list"></ul>
+        <div class="chosen" id="wz-chosen" hidden>
+          <h3>Selection</h3>
+          <ul id="wz-chosen-list"></ul>
+        </div>
+      </section>
+
+      <!-- 2. destination -->
+      <section data-wpane="2" hidden>
+        <p class="hint">Choose the pCloud folder that will receive the backup.
+           To plug into an existing pCloud backup, drill down to your
+           machine's folder.</p>
+        <nav class="crumbs" id="wz-remote-crumbs"></nav>
+        <ul class="picker" id="wz-remote-list"></ul>
+        <div class="chosen" id="wz-preview" hidden>
+          <h3>Suggested destinations</h3>
+          <ul id="wz-preview-list"></ul>
+          <p class="hint hint--tight">These paths mirror your local tree, the
+             way the pCloud client does. You can adjust them at the next step.</p>
+        </div>
+      </section>
+
+      <!-- 3. settings -->
+      <section data-wpane="3" hidden>
+        <div id="wz-forms"></div>
+      </section>
+
+    </div>
+
+    <div class="modal__foot">
+      <p class="modal__msg" id="wz-msg"></p>
+      <div class="modal__btns">
+        <button class="btn btn--ghost" id="wz-back" type="button" hidden>Back</button>
+        <button class="btn btn--go" id="wz-next" type="button" disabled>Continue</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<template id="tpl-wz-form">
+  <fieldset class="wform">
+    <legend data-wf-path></legend>
+    <label>Name
+      <input type="text" data-wf-name>
+    </label>
+    <label>Destination on pCloud
+      <input type="text" data-wf-remote spellcheck="false">
+    </label>
+    <div class="wform__row">
+      <label>Automatic start
+        <select data-wf-schedule>
+          <option value="">Manual only</option>
+          <option value="01:00">Every night at 01:00</option>
+          <option value="02:00">Every night at 02:00</option>
+          <option value="03:00">Every night at 03:00</option>
+          <option value="04:00">Every night at 04:00</option>
+          <option value="12:30">Every day at 12:30</option>
+          <option value="20:00">Every evening at 20:00</option>
+        </select>
+      </label>
+      <label>Deletion threshold
+        <input type="number" min="-1" step="10" data-wf-max>
+      </label>
+    </div>
+    <label class="check">
+      <input type="checkbox" data-wf-auto>
+      <span>Transfer without asking me to confirm</span>
+    </label>
+    <p class="hint hint--tight">Above the threshold, the automatic transfer is
+       refused and waits for your validation. It is the safety net when a
+       drive unmounts or a folder disappears by accident.</p>
+  </fieldset>
+</template>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

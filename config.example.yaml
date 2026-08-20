@@ -1,0 +1,60 @@
+# ============================================================================
+#  pCloud Sync - settings
+#
+#  On first launch this file is copied to config.yaml, which is yours: the
+#  application never rewrites it and updates never touch it.
+#
+#  Backup profiles are NOT here: they are created from the web interface,
+#  by browsing your drives and pCloud. They are stored in profiles.json,
+#  next to the history database.
+#
+#  After changing config.yaml: restart the application
+#  (service mode: nssm restart PCloudSync).
+# ============================================================================
+
+server:
+  host: 127.0.0.1        # SECURITY: the interface has no authentication.
+                         # 0.0.0.0 exposes it to your whole network - anyone
+                         # who can reach the port can start transfers and
+                         # deletions. Only change this behind something you
+                         # trust (VPN such as Tailscale, firewall rules).
+  port: 8477            # avoids 8384 (Syncthing) and 8080/8096 (media servers)
+  open_browser: true     # no effect in desktop mode: the window is enough
+
+rclone:
+  binary: rclone         # full path if not on PATH
+  rc_port: 5577          # internal engine port, do not expose
+                         # (5572 is rclone's default: we stay away from it)
+
+  transfers: 8           # files uploaded in parallel
+  checkers: 16           # comparisons in parallel
+  retries: 5
+  low_level_retries: 20
+
+  # Bandwidth limit. Empty = unlimited.
+  # Example: "08:00,2M 22:00,off" to throttle from 8am to 10pm only
+  bandwidth_limit: ""
+
+# Data locations. When left out, they default to a per-machine data folder:
+#   Windows        %ProgramData%\PCloudSync\
+#   Linux / macOS  ~/.local/share/pcloud-sync/
+# Uncomment to override (the engine log folder is "log_dir", under the
+# rclone block above):
+# database: D:\Data\PCloudSync\history.db
+# profiles_file: D:\Data\PCloudSync\profiles.json
+
+# Files ignored everywhere. Useless in a backup, and they pollute the
+# deletion reports.
+exclude:
+  - "$RECYCLE.BIN/**"
+  - "System Volume Information/**"
+  - "Thumbs.db"
+  - "Desktop.ini"
+  - ".DS_Store"
+  - "~$*"
+  - "*.ffs_db"
+  - ".sync_*.db*"
+  - "*.tmp"
+  - "pagefile.sys"
+  - "hiberfil.sys"
+  - "swapfile.sys"
