@@ -280,7 +280,7 @@ function renderLive(card, id, phase, live, elapsedServer, plan) {
 
   let what;
   if (send) {
-    what = "Transfer in progress";
+    what = verifying ? "Verifying — changes apply at the end" : "Transfer in progress";
   } else if (checks === 0) {
     what = "Taking file inventory";
   } else {
@@ -300,9 +300,18 @@ function renderLive(card, id, phase, live, elapsedServer, plan) {
   const deleteTotal = send && plan ? Number(plan.deletes || 0) : 0;
   const deletesDone = Number(l.deletes || 0);
 
+  // A sync re-verifies the whole tree before touching anything, and
+  // --track-renames defers deletions to the very end (a missing file may
+  // still turn out to be a rename). Until something actually changes, the
+  // honest progress is the comparison count, not a frozen "0 / N".
+  const verifying = send && bytesTotal === 0 && renames === 0
+    && deletesDone === 0 && checks > 0;
+
   let pct = null;
   if (send && bytesTotal > 0) {
     pct = Math.round((bytesDone / bytesTotal) * 100);
+  } else if (verifying && localDone && denom > 0) {
+    pct = Math.min(99, Math.round((checks / denom) * 100));
   } else if (send && movedTotal > 0) {
     pct = Math.min(100, Math.round((renames / movedTotal) * 100));
   } else if (send && deleteTotal > 0) {
@@ -340,6 +349,15 @@ function renderLive(card, id, phase, live, elapsedServer, plan) {
       bits.push(`<span class="n-send">${bytes(l.speed)}/s</span>`);
       if (l.eta) bits.push(`${eta(l.eta)} left`);
       if (l.renames) bits.push(`<span class="n-free">${count(l.renames)} moved</span>`);
+    } else if (verifying) {
+      bits.push(denom > 0
+        ? `<b>${count(checks)}</b> / ${approx ? "~" : ""}${count(denom)} comparisons`
+          + `${pct !== null ? ` · ${pct}%` : ""}`
+        : `<b>${count(checks)}</b> comparisons`);
+      if (movedTotal > 0) bits.push(`<span class="n-free">${count(movedTotal)} moves pending</span>`);
+      if (deleteTotal > 0) {
+        bits.push(`<span class="n-cut">${count(deleteTotal)} deletion${deleteTotal > 1 ? "s" : ""} at the end</span>`);
+      }
     } else if (movedTotal > 0) {
       // "0 B / 0 B · 0 B/s" teaches nothing when nothing uploads: show the
       // progress of the moves, the only thing advancing.
