@@ -1,3 +1,3 @@
 """pCloud Sync — a backup tool that recognizes moved files."""
 
-__version__ = "1.1.3"
+__version__ = "1.1.4"

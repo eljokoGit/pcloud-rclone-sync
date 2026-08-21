@@ -187,6 +187,7 @@ class RcloneEngine:
         dry_run: bool,
         options: dict,
         exclude: list[str],
+        max_delete: int | None = None,
     ) -> int:
         """Starts an asynchronous synchronisation. Returns the job id."""
         config = {
@@ -198,6 +199,12 @@ class RcloneEngine:
             "Retries": options.get("retries", 5),
             "LowLevelRetries": options.get("low_level_retries", 20),
         }
+        if max_delete is not None and max_delete >= 0:
+            # Hard ceiling enforced by the engine itself: verified on v1.75,
+            # rclone deletes at most this many files, then fails the sync
+            # without touching the rest. With a ceiling of 0, nothing is
+            # deleted at all.
+            config["MaxDelete"] = max_delete
         if options.get("bandwidth_limit"):
             config["BwLimit"] = options["bandwidth_limit"]
 

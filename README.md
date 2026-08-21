@@ -164,6 +164,11 @@ list, folder by folder.
 
 **Start the transfer.** Progress shows live: volume, speed, time left,
 files in flight. The synchronisation ends with an automatic verification.
+The transfer is **bounded by the validated plan**: it re-verifies the whole
+tree (a plan is a forecast, not a script), and it will never delete more
+files than the analysis showed — if the tree changed beyond that since the
+analysis, the transfer stops with an error instead of widening the
+perimeter, and you simply run a fresh analysis.
 
 An analysis plan survives closing the application: it is saved on disk and
 recovered at the next start, with its age shown. A thirty-minute analysis

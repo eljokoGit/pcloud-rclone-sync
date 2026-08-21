@@ -832,11 +832,27 @@ class SyncEngine:
             dry_run=False,
             options=self._options(),
             exclude=exclude_rules,
+            # A sync executes current reality, not the plan: the validation
+            # screen would otherwise approve one perimeter and the transfer
+            # run another. Deletions are the destructive dimension, so they
+            # are capped at the validated count — if the tree diverged
+            # beyond it, rclone stops instead of widening the perimeter.
+            max_delete=plan.deletes,
         )
         state.job_id = job_id
 
         try:
             result = self._watch(profile, job_id, group, None, counter)
+        except RcloneError as exc:
+            message = str(exc).lower()
+            if "max-delete" in message or "failed to delete" in message:
+                raise RcloneError(
+                    f"Transfer stopped: it required more deletions than the "
+                    f"validated plan allowed ({plan.deletes}). The local tree "
+                    f"changed since the analysis; no more than the validated "
+                    f"count was deleted. Run a new analysis and review it."
+                ) from exc
+            raise
         finally:
             counter.stop()
         stats = result["stats"]
