@@ -43,6 +43,12 @@ rclone:
 # database: D:\Data\PCloudSync\history.db
 # profiles_file: D:\Data\PCloudSync\profiles.json
 
+# Skip files and folders carrying the Windows "hidden" attribute
+# (dot-names on Linux/macOS). The pCloud client silently skips hidden
+# items: enable this when plugging into an existing pCloud backup, or the
+# tool will upload what the client deliberately left behind.
+skip_hidden: false
+
 # Files ignored everywhere. Useless in a backup, and they pollute the
 # deletion reports.
 exclude:

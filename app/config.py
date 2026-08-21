@@ -67,6 +67,7 @@ class Config:
     database: Path = Path("history.db")
     profiles_file: Path = Path("profiles.json")
     exclude: list[str] = field(default_factory=list)
+    skip_hidden: bool = False
     seed_profiles: list[dict] = field(default_factory=list)
 
 
@@ -102,6 +103,7 @@ def load(path: str | Path) -> Config:
             or Path(raw.get("database") or data_dir / "history.db").parent / "profiles.json"
         ),
         exclude=list(raw.get("exclude") or []),
+        skip_hidden=bool(raw.get("skip_hidden", False)),
     )
 
     # Profiles live in profiles.json, managed from the interface. Any left

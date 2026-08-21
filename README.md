@@ -129,7 +129,9 @@ Deleting a profile does not touch the files already on pCloud.
 `config.yaml` is created from `config.example.yaml` on first launch and is
 then yours: updates never touch it. It only contains technical settings:
 listening port, number of parallel transfers, bandwidth limit, excluded
-files, optional data paths. After a change, restart the application (or
+files, hidden-item skipping (`skip_hidden`, off by default — the pCloud
+client skips hidden files silently; enable it to match), optional data
+paths. After a change, restart the application (or
 `nssm restart PCloudSync` in service mode).
 
 To validate the configuration without starting anything:
@@ -202,7 +204,9 @@ The **Analyze then transfer** button chains both, within the limits set by
   (`--rc-no-auth`): any local process can drive it, with your user's
   rights. This matches rclone's own threat model for a local daemon.
 - Your pCloud credentials live in rclone's own configuration
-  (`%APPDATA%cloneclone.conf`), never in this application's files.
+  (`%APPDATA%
+clone
+clone.conf`), never in this application's files.
 
 ---
 

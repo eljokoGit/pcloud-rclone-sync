@@ -13,9 +13,11 @@ validation.
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 import json
+import stat as stat_module
 import threading
 import time
 from dataclasses import dataclass, field
@@ -26,6 +28,8 @@ from .config import Config
 from .db import History
 from .store import Profile, ProfileStore
 from .rclone import RcloneEngine, RcloneError
+
+log = logging.getLogger("pcloud-sync.engine")
 
 # Lines rclone emits during a dry run
 _RE_DELETE = re.compile(r"NOTICE: (.+?): Skipped delete as --dry-run is set")
@@ -42,6 +46,59 @@ _UNIT = {"": 1, "K": 1024, "M": 1024**2, "G": 1024**3, "T": 1024**4}
 
 # System folders, excluded from the count as from the synchronisation
 _IGNORED_DIRS = {"$recycle.bin", "system volume information", "config.msi"}
+
+# Characters rclone's glob patterns treat as syntax
+_GLOB_SPECIALS = set("*?[]{}\\")
+
+
+def _glob_escape(name: str) -> str:
+    """Escapes rclone filter glob characters in a literal file name."""
+    return "".join("\\" + c if c in _GLOB_SPECIALS else c for c in name)
+
+
+def hidden_excludes(root: str, cap: int = 1000) -> list[str]:
+    """Builds rclone exclude rules for hidden files and folders.
+
+    rclone has no attribute-based filter: the Windows hidden bit is
+    invisible to its glob rules. The pCloud client silently skips hidden
+    items, and a backup meant to plug into one must do the same — observed:
+    a hidden folder of 183 GB that the client had never uploaded. Hidden
+    folders are pruned as a single anchored rule covering their subtree, so
+    the walk stays a metadata pass. On non-Windows platforms, dot-names
+    count as hidden.
+    """
+    rules: list[str] = []
+    stack = [(root, "")]
+    while stack and len(rules) < cap:
+        current, prefix = stack.pop()
+        try:
+            entries = list(os.scandir(current))
+        except OSError:
+            continue
+        for entry in entries:
+            if len(rules) >= cap:
+                break
+            try:
+                if os.name == "nt":
+                    attrs = entry.stat(follow_symlinks=False).st_file_attributes
+                    hidden = bool(attrs & stat_module.FILE_ATTRIBUTE_HIDDEN)
+                else:
+                    hidden = entry.name.startswith(".")
+                is_dir = entry.is_dir(follow_symlinks=False)
+            except OSError:
+                continue
+            if is_dir:
+                if hidden:
+                    rules.append(f"/{prefix}{_glob_escape(entry.name)}/**")
+                else:
+                    stack.append((entry.path, f"{prefix}{_glob_escape(entry.name)}/"))
+            elif hidden:
+                rules.append(f"/{prefix}{_glob_escape(entry.name)}")
+    if len(rules) >= cap:
+        log.warning(
+            "Hidden-item scan reached the %d-rule cap: items beyond it will sync.", cap
+        )
+    return rules
 
 class Cancelled(Exception):
     """The user interrupted the operation. Distinct from a failure."""
@@ -510,6 +567,20 @@ class SyncEngine:
             )
         self.rclone.check_remote(profile.remote)
 
+    def _exclude_rules(self, profile: Profile, state: State) -> list[str]:
+        """Exclusion list for one run: config patterns plus, when enabled,
+        the hidden items found by a fresh scan. Scanned at every run so the
+        analysis and the transfer that follows see the same tree."""
+        rules = list(self.config.exclude)
+        if self.config.skip_hidden:
+            found = hidden_excludes(profile.local)
+            if state.cancelled:
+                raise Cancelled()
+            if found:
+                log.info("%s: %d hidden item(s) excluded.", profile.id, len(found))
+            rules += found
+        return rules
+
     def _options(self) -> dict:
         return {
             "transfers": self.config.transfers,
@@ -631,6 +702,8 @@ class SyncEngine:
         run_id = self.history.open_run(profile.id, profile.name, "analysis", trigger)
         state.run_id = run_id
 
+        exclude_rules = self._exclude_rules(profile, state)
+
         group = f"analysis-{profile.id}-{int(time.time())}"
         tail = LogTail(self.rclone.log_file)
         counter = LocalCounter(profile.local)
@@ -642,7 +715,7 @@ class SyncEngine:
             group=group,
             dry_run=True,
             options=self._options(),
-            exclude=self.config.exclude,
+            exclude=exclude_rules,
         )
         state.job_id = job_id
 
@@ -737,6 +810,8 @@ class SyncEngine:
         run_id = self.history.open_run(profile.id, profile.name, "transfer", trigger)
         state.run_id = run_id
 
+        exclude_rules = self._exclude_rules(profile, state)
+
         group = f"transfer-{profile.id}-{int(time.time())}"
         counter = LocalCounter(profile.local)
         counter.start()
@@ -746,7 +821,7 @@ class SyncEngine:
             group=group,
             dry_run=False,
             options=self._options(),
-            exclude=self.config.exclude,
+            exclude=exclude_rules,
         )
         state.job_id = job_id
 
