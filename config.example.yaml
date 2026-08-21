@@ -48,10 +48,10 @@ rclone:
 # you or your data is sent. Set to false to disable entirely.
 update_check: true
 
-# Skip files and folders carrying the Windows "hidden" attribute
-# (dot-names on Linux/macOS). The pCloud client silently skips hidden
-# items: enable this when plugging into an existing pCloud backup, or the
-# tool will upload what the client deliberately left behind.
+# Skip files and folders carrying the Windows "hidden" attribute, plus
+# dot-names (.git, .DS_Store, ._*) on every platform. The pCloud client
+# silently skips both: enable this when plugging into an existing pCloud
+# backup, or the tool will upload what the client deliberately left behind.
 skip_hidden: false
 
 # Files ignored everywhere. Useless in a backup, and they pollute the

@@ -62,10 +62,11 @@ def hidden_excludes(root: str, cap: int = 1000) -> list[str]:
     rclone has no attribute-based filter: the Windows hidden bit is
     invisible to its glob rules. The pCloud client silently skips hidden
     items, and a backup meant to plug into one must do the same — observed:
-    a hidden folder of 183 GB that the client had never uploaded. Hidden
-    folders are pruned as a single anchored rule covering their subtree, so
-    the walk stays a metadata pass. On non-Windows platforms, dot-names
-    count as hidden.
+    a hidden folder of 183 GB that the client had never uploaded. Dot-names
+    count as hidden on every platform: the pCloud client's default
+    exclusions cover them too (observed: ._* and .DS_Store files it had
+    never uploaded). Hidden folders are pruned as a single anchored rule
+    covering their subtree, so the walk stays a metadata pass.
     """
     rules: list[str] = []
     stack = [(root, "")]
@@ -79,11 +80,10 @@ def hidden_excludes(root: str, cap: int = 1000) -> list[str]:
             if len(rules) >= cap:
                 break
             try:
-                if os.name == "nt":
+                hidden = entry.name.startswith(".")
+                if not hidden and os.name == "nt":
                     attrs = entry.stat(follow_symlinks=False).st_file_attributes
                     hidden = bool(attrs & stat_module.FILE_ATTRIBUTE_HIDDEN)
-                else:
-                    hidden = entry.name.startswith(".")
                 is_dir = entry.is_dir(follow_symlinks=False)
             except OSError:
                 continue
