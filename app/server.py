@@ -17,6 +17,7 @@ from .engine import SyncEngine
 from .rclone import RcloneEngine, RcloneError
 from .scheduler import Scheduler
 from .store import ProfileError, ProfileStore
+from .update import Updater
 
 log = logging.getLogger("pcloud-sync.server")
 STATIC = Path(__file__).parent / "static"
@@ -31,6 +32,7 @@ def create_app(
     store: ProfileStore,
 ) -> FastAPI:
     app = FastAPI(title="pCloud Sync", docs_url=None, redoc_url=None)
+    updater = Updater(STATIC.parent.parent, __import__("app").__version__)
 
     # The API has no authentication: it trusts whoever reaches it. Without
     # these checks, any web page visited by the user could fire the
@@ -105,6 +107,26 @@ def create_app(
         interface believing it found its own.
         """
         return {"app": "pcloud-sync", "version": __import__("app").__version__}
+
+    @app.get("/api/update")
+    def update_info(force: int = 0):
+        # Plain def: FastAPI runs it in a thread, the network call must not
+        # block the event loop that serves /api/state every second.
+        if not config.update_check and not force:
+            return {"available": False, "disabled": True, "status": updater.status}
+        info = updater.check(force=bool(force))
+        return {**info, "status": updater.status}
+
+    @app.post("/api/update/apply")
+    def update_apply():
+        # Replacing files under a running transfer would be asking for
+        # trouble; the update waits for a quiet engine.
+        for p in store.profiles:
+            if engine.busy(p.id):
+                raise HTTPException(409, "Finish or stop running operations before updating.")
+        if not updater.start_apply():
+            raise HTTPException(409, "No update available, or one is already in progress.")
+        return {"ok": True}
 
     @app.get("/api/engine")
     async def engine_info():

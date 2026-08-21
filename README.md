@@ -40,6 +40,11 @@ minutes. After that, the application starts directly.
 **3.** Double-click **`Create desktop shortcut.bat`** to get the icon on
 your Desktop.
 
+**Updating**: when a new release exists, the header shows an **Update**
+button — one click downloads and installs it (your settings and data are
+never touched), then restart the application. Manual alternative: extract
+the new release zip over the installation folder.
+
 To start the application with Windows, double-click
 **`Start with Windows.bat`**. The same file undoes the setting if you
 change your mind.
@@ -203,6 +208,9 @@ The **Analyze then transfer** button chains both, within the limits set by
 - The rclone engine daemon runs on 127.0.0.1:5577 without authentication
   (`--rc-no-auth`): any local process can drive it, with your user's
   rights. This matches rclone's own threat model for a local daemon.
+- Once every few hours the application asks `api.github.com` for the
+  latest release number, to offer the Update button. Nothing about you or
+  your data is sent; `update_check: false` disables it.
 - Your pCloud credentials live in rclone's own configuration
   (`%APPDATA%
 clone

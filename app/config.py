@@ -68,6 +68,7 @@ class Config:
     profiles_file: Path = Path("profiles.json")
     exclude: list[str] = field(default_factory=list)
     skip_hidden: bool = False
+    update_check: bool = True
     seed_profiles: list[dict] = field(default_factory=list)
 
 
@@ -104,6 +105,7 @@ def load(path: str | Path) -> Config:
         ),
         exclude=list(raw.get("exclude") or []),
         skip_hidden=bool(raw.get("skip_hidden", False)),
+        update_check=bool(raw.get("update_check", True)),
     )
 
     # Profiles live in profiles.json, managed from the interface. Any left

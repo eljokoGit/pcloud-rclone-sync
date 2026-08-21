@@ -131,6 +131,23 @@ button { font: inherit; color: inherit; }
 .engine.is-down  .engine__dot { background: var(--cut); }
 .engine.is-down  .engine__text { color: var(--cut); }
 
+/* update banner: display:flex would beat the hidden attribute (the
+   project's recurring CSS trap), hence the guard */
+.update[hidden] { display: none; }
+
+.update {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.update__text {
+  font: 500 12.5px/1.4 var(--mono);
+  color: var(--free);
+}
+
+.update__text.is-error { color: var(--cut); }
+
 /* --- layout ---------------------------------------------------------- */
 
 main {

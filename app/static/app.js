@@ -830,6 +830,73 @@ setInterval(checkEngine, 30000);
 tick();
 loadHistory();
 
+/* -- update check ----------------------------------------------------------- */
+
+const updateBox = document.getElementById("update");
+const updateText = document.getElementById("update-text");
+const updateBtn = document.getElementById("update-btn");
+
+function renderUpdate(u) {
+  const st = (u.status || {}).state || "idle";
+  updateText.classList.remove("is-error");
+  if (st === "downloading" || st === "installing") {
+    updateText.textContent = "Updating…";
+    updateBtn.hidden = true;
+    updateBox.hidden = false;
+    return "poll";
+  }
+  if (st === "done") {
+    updateText.textContent = (u.status.detail || "Update installed.") ;
+    updateBtn.hidden = true;
+    updateBox.hidden = false;
+    return "stop";
+  }
+  if (st === "error") {
+    updateText.textContent = u.status.detail || "Update failed.";
+    updateText.classList.add("is-error");
+    updateBtn.hidden = false;
+    updateBox.hidden = false;
+    return "stop";
+  }
+  if (u.available) {
+    updateText.textContent = `v${u.latest} available`;
+    updateBtn.hidden = false;
+    updateBox.hidden = false;
+    return "stop";
+  }
+  updateBox.hidden = true;
+  return "stop";
+}
+
+async function pollUpdate() {
+  try {
+    const u = await api("/api/update");
+    if (renderUpdate(u) === "poll") setTimeout(pollUpdate, 1000);
+  } catch { /* the check must never bother the user */ }
+}
+
+async function checkUpdate() {
+  try {
+    const u = await api("/api/update");
+    renderUpdate(u);
+  } catch { /* silent: no network is not the user's problem */ }
+}
+
+updateBtn.addEventListener("click", async () => {
+  updateBtn.disabled = true;
+  try {
+    await api("/api/update/apply", { method: "POST" });
+    setTimeout(pollUpdate, 500);
+  } catch (err) {
+    toast(err.message);
+  } finally {
+    updateBtn.disabled = false;
+  }
+});
+
+checkUpdate();
+setInterval(checkUpdate, 6 * 3600 * 1000);
+
 /* ==========================================================================
    Wizard: pick sources, a destination, settings
    ========================================================================== */
