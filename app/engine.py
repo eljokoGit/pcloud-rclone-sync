@@ -62,39 +62,49 @@ def hidden_excludes(root: str, cap: int = 1000) -> list[str]:
     rclone has no attribute-based filter: the Windows hidden bit is
     invisible to its glob rules. The pCloud client silently skips hidden
     items, and a backup meant to plug into one must do the same — observed:
-    a hidden folder of 183 GB that the client had never uploaded. Dot-names
-    count as hidden on every platform: the pCloud client's default
-    exclusions cover them too (observed: ._* and .DS_Store files it had
-    never uploaded). Hidden folders are pruned as a single anchored rule
-    covering their subtree, so the walk stays a metadata pass.
+    a hidden folder of 183 GB that the client had never uploaded.
+
+    Dot-names count as hidden on every platform (the pCloud client's
+    default exclusions cover them too), but they need no scan: two generic
+    rules match them all. They MUST NOT become one rule per file — a drive
+    full of dot-files once flooded the rule cap and silently dropped the
+    exclusion of that 183 GB attribute-hidden folder (observed 2026-08-21).
+    The walk only collects attribute-hidden items, which number in the
+    dozens, and prunes dot-folders instead of descending into them.
     """
-    rules: list[str] = []
+    rules: list[str] = [".*", ".*/**"]
+    if os.name != "nt":
+        return rules
+
+    scanned = 0
     stack = [(root, "")]
-    while stack and len(rules) < cap:
+    while stack and scanned < cap:
         current, prefix = stack.pop()
         try:
             entries = list(os.scandir(current))
         except OSError:
             continue
         for entry in entries:
-            if len(rules) >= cap:
+            if scanned >= cap:
                 break
+            if entry.name.startswith("."):
+                continue  # covered by the two generic rules
             try:
-                hidden = entry.name.startswith(".")
-                if not hidden and os.name == "nt":
-                    attrs = entry.stat(follow_symlinks=False).st_file_attributes
-                    hidden = bool(attrs & stat_module.FILE_ATTRIBUTE_HIDDEN)
+                attrs = entry.stat(follow_symlinks=False).st_file_attributes
+                hidden = bool(attrs & stat_module.FILE_ATTRIBUTE_HIDDEN)
                 is_dir = entry.is_dir(follow_symlinks=False)
             except OSError:
                 continue
             if is_dir:
                 if hidden:
                     rules.append(f"/{prefix}{_glob_escape(entry.name)}/**")
+                    scanned += 1
                 else:
                     stack.append((entry.path, f"{prefix}{_glob_escape(entry.name)}/"))
             elif hidden:
                 rules.append(f"/{prefix}{_glob_escape(entry.name)}")
-    if len(rules) >= cap:
+                scanned += 1
+    if scanned >= cap:
         log.warning(
             "Hidden-item scan reached the %d-rule cap: items beyond it will sync.", cap
         )
