@@ -135,15 +135,25 @@ button { font: inherit; color: inherit; }
    project's recurring CSS trap), hence the guard */
 .update[hidden] { display: none; }
 
+/* A full-width strip under the masthead, on the page grid. Living inside
+   masthead__meters, its variable-length text used to shove the meter and
+   buttons around — observed after the first in-app update. */
 .update {
   display: flex;
   align-items: center;
-  gap: 9px;
+  justify-content: space-between;
+  gap: 14px;
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 10px var(--gut);
+  background: var(--free-bg);
+  border-bottom: 1px solid var(--rule);
 }
 
 .update__text {
   font: 500 12.5px/1.4 var(--mono);
   color: var(--free);
+  min-width: 0;
 }
 
 .update__text.is-error { color: var(--cut); }
