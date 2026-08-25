@@ -72,7 +72,15 @@ def create_app(
                     status_code=403,
                     content={"error": "Cross-origin requests are not allowed."},
                 )
-        return await call_next(request)
+        response = await call_next(request)
+        # An update replaces app.js and style.css under a webview that may
+        # still hold the previous ones: with no Cache-Control, browsers fall
+        # back to heuristic freshness (a fraction of the file's age), so an
+        # interface untouched for weeks can keep serving stale code after an
+        # update. Revalidation is free over localhost.
+        if request.url.path.startswith("/static") or request.url.path == "/":
+            response.headers["Cache-Control"] = "no-cache"
+        return response
 
     @app.exception_handler(RcloneError)
     async def _rclone_error(_request, exc: RcloneError):

@@ -278,6 +278,36 @@ function renderLive(card, id, phase, live, elapsedServer, plan) {
   const denom = localTotal > 0 ? localTotal + renames : totalChecks;
   const approx = !localDone;
 
+  // Files absent from the destination are never "checked": rclone queues
+  // them for copy and hashes them for track-renames instead. On a backup
+  // with a real gap, `checks` therefore plateaus — observed in production:
+  // frozen at 179,095 of 204,257 (88%) for the rest of the run while the
+  // 25,162 missing files were being hashed. Every local file is examined
+  // exactly once, as a check, a move or a copy: the honest numerator is
+  // their sum.
+  const examined = checks + renames + Number(l.seen_copies || 0);
+
+  // A transfer may upload nothing at all: a pure reorganisation
+  // (server-side moves) or deletions only. bytesTotal then stays at zero
+  // and the bar never appeared, although the plan gives the expected total
+  // and the stats the real progress.
+  const movedTotal = send && plan ? Number(plan.moved || 0) : 0;
+  const deleteTotal = send && plan ? Number(plan.deletes || 0) : 0;
+  const deletesDone = Number(l.deletes || 0);
+
+  // A sync re-verifies the whole tree before touching anything, and
+  // --track-renames defers deletions to the very end (a missing file may
+  // still turn out to be a rename). Until something actually changes, the
+  // honest progress is the comparison count, not a frozen "0 / N".
+  //
+  // These four MUST stay above the first use of `verifying` below: read
+  // earlier, a `const` throws (temporal dead zone). Declared after it, the
+  // whole function threw on every transfer render and the live panel stayed
+  // frozen on what the analysis had left — the cause of two production
+  // reports ("no transfer percentage", "0/1 deletions for ages").
+  const verifying = send && bytesTotal === 0 && renames === 0
+    && deletesDone === 0 && checks > 0;
+
   let what;
   if (send) {
     what = verifying ? "Verifying — changes apply at the end" : "Transfer in progress";
@@ -292,26 +322,11 @@ function renderLive(card, id, phase, live, elapsedServer, plan) {
   const fill = card.querySelector("[data-live-fill]");
   bar.classList.toggle("live__bar--send", send);
 
-  // A transfer may upload nothing at all: a pure reorganisation
-  // (server-side moves) or deletions only. bytesTotal then stays at zero
-  // and the bar never appeared, although the plan gives the expected total
-  // and the stats the real progress.
-  const movedTotal = send && plan ? Number(plan.moved || 0) : 0;
-  const deleteTotal = send && plan ? Number(plan.deletes || 0) : 0;
-  const deletesDone = Number(l.deletes || 0);
-
-  // A sync re-verifies the whole tree before touching anything, and
-  // --track-renames defers deletions to the very end (a missing file may
-  // still turn out to be a rename). Until something actually changes, the
-  // honest progress is the comparison count, not a frozen "0 / N".
-  const verifying = send && bytesTotal === 0 && renames === 0
-    && deletesDone === 0 && checks > 0;
-
   let pct = null;
   if (send && bytesTotal > 0) {
     pct = Math.round((bytesDone / bytesTotal) * 100);
   } else if (verifying && localDone && denom > 0) {
-    pct = Math.min(99, Math.round((checks / denom) * 100));
+    pct = Math.min(99, Math.round((examined / denom) * 100));
   } else if (send && movedTotal > 0) {
     pct = Math.min(100, Math.round((renames / movedTotal) * 100));
   } else if (send && deleteTotal > 0) {
@@ -322,7 +337,7 @@ function renderLive(card, id, phase, live, elapsedServer, plan) {
     // would freeze that too-high value afterwards.
     // Capped at 99: the denominator remains an estimate, and a bar at
     // 100% on a running operation would lie.
-    pct = Math.min(99, Math.round((checks / denom) * 100));
+    pct = Math.min(99, Math.round((examined / denom) * 100));
     // The denominator grows with the discovered moves. Without this lock,
     // the bar would occasionally move backwards, which looks like the work
     // is being undone.
@@ -351,9 +366,9 @@ function renderLive(card, id, phase, live, elapsedServer, plan) {
       if (l.renames) bits.push(`<span class="n-free">${count(l.renames)} moved</span>`);
     } else if (verifying) {
       bits.push(denom > 0
-        ? `<b>${count(checks)}</b> / ${approx ? "~" : ""}${count(denom)} comparisons`
+        ? `<b>${count(examined)}</b> / ${approx ? "~" : ""}${count(denom)} files compared`
           + `${pct !== null ? ` · ${pct}%` : ""}`
-        : `<b>${count(checks)}</b> comparisons`);
+        : `<b>${count(examined)}</b> files compared`);
       if (movedTotal > 0) bits.push(`<span class="n-free">${count(movedTotal)} moves pending</span>`);
       if (deleteTotal > 0) {
         bits.push(`<span class="n-cut">${count(deleteTotal)} deletion${deleteTotal > 1 ? "s" : ""} at the end</span>`);
@@ -374,9 +389,9 @@ function renderLive(card, id, phase, live, elapsedServer, plan) {
     }
   } else if (checks > 0) {
     bits.push(denom > 0
-      ? `<b>${count(checks)}</b> / ${approx ? "~" : ""}${count(denom)} comparisons`
+      ? `<b>${count(examined)}</b> / ${approx ? "~" : ""}${count(denom)} files compared`
         + `${pct !== null ? ` · ${pct}%` : ""}`
-      : `<b>${count(checks)}</b> comparisons`);
+      : `<b>${count(examined)}</b> files compared`);
     // Moves, uploads and deletions now live in the figure tiles above;
     // repeating them here would say everything twice.
   } else {

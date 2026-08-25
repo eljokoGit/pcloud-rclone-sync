@@ -159,6 +159,10 @@ deletions. When it concludes there is nothing to transfer, that claim is
 itself verified by an independent listing comparison before being shown —
 anything found missing becomes the plan instead.
 
+During an analysis the progress counts every local file examined —
+compared, moved or queued for upload — so it keeps advancing even when the
+backup has a large gap and there is nothing left to compare.
+
 After an update, the banner offers **Restart now**: the application
 closes and relaunches itself. At startup the window opens immediately on a
 status screen naming the phase actually in progress (starting the rclone
