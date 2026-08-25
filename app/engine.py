@@ -551,6 +551,37 @@ class SyncEngine:
             self.history.close_run(state.run_id, "failed", message=message)
             state.run_id = None
 
+    def _verify_completeness(
+        self, profile: Profile, exclude_rules: list[str], state: State
+    ) -> tuple[list[dict], int]:
+        """One-way completeness check after a transfer.
+
+        A sync that reports success has not proven the destination holds
+        every source file - observed in production: an rclone sync moved a
+        remote file to satisfy one of two identical local twins and never
+        uploaded the other, while still finishing "successfully". Both
+        sides are re-listed (a listing pass only, no hashing) under the
+        same filters as the transfer, and every source file missing or
+        size-mismatched on the destination is reported.
+        """
+        started = time.time()
+        src = self.rclone.list_files(profile.local, exclude_rules)
+        if state.cancelled:
+            raise Cancelled()
+        dst = self.rclone.list_files(profile.remote, exclude_rules)
+        if state.cancelled:
+            raise Cancelled()
+        missing = [
+            {"path": path, "bytes": max(size, 0)}
+            for path, size in src.items()
+            if path not in dst or (size >= 0 and dst[path] >= 0 and dst[path] != size)
+        ]
+        log.info(
+            "%s: completeness check - %d source files, %d missing or mismatched (%.1f s).",
+            profile.id, len(src), len(missing), time.time() - started,
+        )
+        return missing, len(src)
+
     def _wait_job_end(self, job_id: int, timeout: float = 10.0) -> None:
         """Waits until a stopped job has actually finished.
 
@@ -857,30 +888,85 @@ class SyncEngine:
             counter.stop()
         stats = result["stats"]
 
-        self.history.close_run(
-            run_id,
-            "success",
-            stats={
-                "moved": int(stats.get("renames", 0)),
-                "transferred": int(stats.get("transfers", 0)),
-                "deleted": int(stats.get("deletes", 0)),
-                "checks": int(stats.get("checks", 0)),
-                "bytes": int(stats.get("bytes", 0)),
-                "errors": int(stats.get("errors", 0)),
-            },
-        )
-
         self.rclone.forget_stats(group)
         state.job_id = None
+
+        sync_stats = {
+            "moved": int(stats.get("renames", 0)),
+            "transferred": int(stats.get("transfers", 0)),
+            "deleted": int(stats.get("deletes", 0)),
+            "checks": int(stats.get("checks", 0)),
+            "bytes": int(stats.get("bytes", 0)),
+            "errors": int(stats.get("errors", 0)),
+        }
+        base_message = (
+            f"Done. {sync_stats['moved']} server-side moves, "
+            f"{sync_stats['transferred']} files uploaded."
+        )
+
+        # "Done" is only claimed once proven: the destination is re-listed
+        # and compared, one way, under the transfer's own filters.
+        state.message = "Verifying the backup is complete."
+        missing = None
+        checked = 0
+        verify_error = ""
+        try:
+            missing, checked = self._verify_completeness(profile, exclude_rules, state)
+        except Cancelled:
+            raise
+        except RcloneError as exc:
+            verify_error = str(exc)
+
+        if missing:
+            def by_folder(entries) -> list[dict]:
+                groups = {}
+                for entry in entries:
+                    top = entry["path"].split("/", 1)[0] if "/" in entry["path"] else "(root)"
+                    g = groups.setdefault(top, {"folder": top, "count": 0, "bytes": 0})
+                    g["count"] += 1
+                    g["bytes"] += entry["bytes"]
+                return sorted(groups.values(), key=lambda d: d["count"], reverse=True)
+
+            gap = Plan(
+                transfers=len(missing),
+                checks=checked,
+                bytes_to_send=sum(entry["bytes"] for entry in missing),
+                send_samples=sorted(missing, key=lambda e: -e["bytes"]),
+                send_by_folder=by_folder(missing),
+                computed_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            )
+            self.history.close_run(
+                run_id,
+                "incomplete",
+                stats=sync_stats,
+                message=f"{len(missing)} files missing on the destination after the transfer.",
+            )
+            state.run_id = None
+            state.plan = gap
+            state.phase = VALIDATION
+            self._save_plan(profile.id, gap)
+            state.started_at = None
+            state.message = (
+                base_message
+                + f" Verification found {len(missing)} files missing on the "
+                  f"destination. Review the list and start the transfer to complete."
+            )
+            return
+
+        if verify_error:
+            # An unverifiable transfer is not the same as an incomplete one:
+            # the run stays a success but says so instead of claiming proof.
+            final_message = base_message + f" Completeness could not be verified: {verify_error}"
+        else:
+            final_message = base_message + f" Verified complete: {checked:,} files on both sides."
+
+        self.history.close_run(run_id, "success", stats=sync_stats)
         state.run_id = None
         state.plan = None
         state.phase = IDLE
         self._drop_plan(profile.id)
         state.started_at = None
-        state.message = (
-            f"Done. {int(stats.get('renames', 0))} server-side moves, "
-            f"{int(stats.get('transfers', 0))} files uploaded."
-        )
+        state.message = final_message
 
     def _run_cycle(self, profile: Profile, trigger: str) -> None:
         plan = self._run_analysis(profile, trigger)

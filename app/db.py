@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS runs (
     profile_name TEXT    NOT NULL,
     kind         TEXT    NOT NULL,   -- analysis | transfer
     trigger      TEXT    NOT NULL,   -- manual | scheduled
-    status       TEXT    NOT NULL,   -- running | success | failed | cancelled
+    status       TEXT    NOT NULL,   -- running | success | incomplete | failed | cancelled
     started_at   TEXT    NOT NULL,
     ended_at     TEXT,
     duration_s   REAL,

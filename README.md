@@ -163,7 +163,12 @@ the server handles for free (green) and what has to cross your uplink
 list, folder by folder.
 
 **Start the transfer.** Progress shows live: volume, speed, time left,
-files in flight. The synchronisation ends with an automatic verification.
+files in flight. The synchronisation ends with an automatic completeness
+verification: both sides are re-listed and compared, and the run is only
+recorded as a success once every source file is proven present on the
+destination. If anything is missing, the run is marked **Incomplete**, the
+missing files appear as a ready-to-review plan, and one more validated
+transfer completes the backup.
 The transfer is **bounded by the validated plan**: it re-verifies the whole
 tree (a plan is a forecast, not a script), and it will never delete more
 files than the analysis showed — if the tree changed beyond that since the

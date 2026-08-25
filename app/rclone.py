@@ -220,6 +220,38 @@ class RcloneEngine:
 
         return self.call("sync/sync", payload)["jobid"]
 
+    def list_files(self, fs: str, exclude: list[str]) -> dict:
+        """Recursive file listing as {path: size}, with filters applied.
+
+        Runs as an asynchronous rc job: listing hundreds of thousands of
+        files on a cloud backend can exceed the synchronous client timeout.
+        """
+        payload = {
+            "fs": fs,
+            "remote": "",
+            "opt": {
+                "recurse": True,
+                "noModTime": True,
+                "noMimeType": True,
+                "filesOnly": True,
+            },
+            "_async": True,
+        }
+        if exclude:
+            payload["_filter"] = {"ExcludeRule": exclude}
+        job_id = self.call("operations/list", payload)["jobid"]
+        while True:
+            status = self.call("job/status", {"jobid": job_id})
+            if status.get("finished"):
+                if not status.get("success"):
+                    raise RcloneError(status.get("error") or "Listing failed.")
+                out = status.get("output") or {}
+                return {
+                    item["Path"]: int(item.get("Size", -1))
+                    for item in out.get("list", [])
+                }
+            time.sleep(0.5)
+
     def job_status(self, job_id: int) -> dict:
         return self.call("job/status", {"jobid": job_id})
 

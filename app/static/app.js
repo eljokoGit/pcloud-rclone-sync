@@ -646,6 +646,7 @@ function closeDrawer() {
 
 const STATUS = {
   success:    ["Success", "tag--ok"],
+  incomplete: ["Incomplete", "tag--wait"],
   failed:     ["Failed", "tag--ko"],
   running:    ["Running", "tag--run"],
   cancelled:  ["Cancelled", "tag--run"],
