@@ -205,6 +205,8 @@ main {
 
 .card__timing span { display: block; }
 
+.card__timing .is-unverified { color: var(--wire); }
+
 /* step rail: the cycle is a real sequence, not decoration */
 
 .rail {

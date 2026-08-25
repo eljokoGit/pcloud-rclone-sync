@@ -132,6 +132,22 @@ class History:
             ).fetchone()
         return dict(row) if row else None
 
+    def last_verified(self, profile_id: str) -> dict | None:
+        """Last transfer whose completeness verification proved the backup.
+
+        Rows written before the verification existed have no flag and do
+        not count: an unproven old success is exactly what the indicator
+        must not present as safe.
+        """
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT * FROM runs WHERE profile_id=? AND kind='transfer'"
+                " AND status='success' AND details LIKE '%\"verified\": true%'"
+                " ORDER BY id DESC LIMIT 1",
+                (profile_id,),
+            ).fetchone()
+        return dict(row) if row else None
+
     def get(self, run_id: int) -> dict | None:
         with self._lock:
             row = self._conn.execute("SELECT * FROM runs WHERE id = ?", (run_id,)).fetchone()

@@ -430,9 +430,20 @@ function renderCard(profile) {
     ? `scheduled ${profile.schedule}${profile.next_run ? " · next " + when(profile.next_run) : ""}`
     : "manual start";
   card.querySelector("[data-schedule]").textContent = schedule;
-  card.querySelector("[data-lastrun]").textContent = profile.last_success
-    ? `last transfer ${when(profile.last_success.ended_at)}`
-    : "no transfer recorded";
+  // A bare date let a stale backup look current: 13 GB went missing
+  // while the card kept saying "last transfer 20/08". Only a transfer
+  // whose completeness verification passed earns the "verified" wording;
+  // anything older or unproven is flagged.
+  const lastRun = card.querySelector("[data-lastrun]");
+  lastRun.classList.remove("is-unverified");
+  if (profile.last_verified) {
+    lastRun.textContent = `last verified transfer ${when(profile.last_verified.ended_at)}`;
+  } else if (profile.last_success) {
+    lastRun.textContent = `last transfer ${when(profile.last_success.ended_at)} — unverified`;
+    lastRun.classList.add("is-unverified");
+  } else {
+    lastRun.textContent = "no transfer recorded";
+  }
 
   renderVerdict(card, st.plan);
   renderWire(card, st.plan);

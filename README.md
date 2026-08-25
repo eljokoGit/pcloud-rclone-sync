@@ -155,7 +155,9 @@ The cycle is always the same:
 
 **Analyze** simulates the operation without modifying anything and produces
 a numbered summary: server-side moves, files to upload, network volume,
-deletions.
+deletions. When it concludes there is nothing to transfer, that claim is
+itself verified by an independent listing comparison before being shown —
+anything found missing becomes the plan instead.
 
 **Review the plan.** The two-track bar shows the proportion between what
 the server handles for free (green) and what has to cross your uplink

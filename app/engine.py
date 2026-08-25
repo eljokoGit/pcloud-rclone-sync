@@ -386,6 +386,7 @@ class SyncEngine:
                 **profile.to_dict(),
                 "state": state.to_dict(),
                 "last_success": last,
+                "last_verified": self.history.last_verified(profile.id),
                 "local_exists": self._local_exists(profile.local),
             }
         return out
@@ -550,6 +551,24 @@ class SyncEngine:
         if state.run_id is not None:
             self.history.close_run(state.run_id, "failed", message=message)
             state.run_id = None
+
+    @staticmethod
+    def _plan_from_missing(missing: list[dict], checked: int) -> Plan:
+        """Turns a verification gap into a reviewable, transferable plan."""
+        groups: dict[str, dict] = {}
+        for entry in missing:
+            top = entry["path"].split("/", 1)[0] if "/" in entry["path"] else "(root)"
+            g = groups.setdefault(top, {"folder": top, "count": 0, "bytes": 0})
+            g["count"] += 1
+            g["bytes"] += entry["bytes"]
+        return Plan(
+            transfers=len(missing),
+            checks=checked,
+            bytes_to_send=sum(entry["bytes"] for entry in missing),
+            send_samples=sorted(missing, key=lambda e: -e["bytes"]),
+            send_by_folder=sorted(groups.values(), key=lambda d: d["count"], reverse=True),
+            computed_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        )
 
     def _verify_completeness(
         self, profile: Profile, exclude_rules: list[str], state: State
@@ -808,6 +827,33 @@ class SyncEngine:
         )
 
         state.job_id = None
+
+        # An empty plan is a claim, not a proof: recorded in production, an
+        # analysis reported "both sides match" while 5,386 local files were
+        # absent from the destination (run #17, 2026-08-21 — the same
+        # comparison found them three days later). Before saying "nothing to
+        # transfer", the claim is checked by an independent listing diff;
+        # anything found becomes the plan.
+        verify_note = ""
+        gap_found = False
+        if plan.empty:
+            state.message = "Verifying that both sides really match."
+            try:
+                missing, checked_count = self._verify_completeness(
+                    profile, exclude_rules, state
+                )
+            except Cancelled:
+                raise
+            except RcloneError as exc:
+                verify_note = f" Completeness could not be verified: {exc}"
+                missing = []
+                checked_count = 0
+            if missing:
+                plan = self._plan_from_missing(missing, checked_count)
+                gap_found = True
+            elif not verify_note:
+                verify_note = f" Verified: {checked_count:,} files on both sides."
+
         state.plan = plan
         state.run_id = None
         self.rclone.forget_stats(group)
@@ -828,11 +874,18 @@ class SyncEngine:
 
         if plan.empty:
             state.phase = IDLE
-            state.message = "Both sides already match. Nothing to transfer."
+            state.message = "Both sides already match. Nothing to transfer." + verify_note
             self._drop_plan(profile.id)
         else:
             state.phase = VALIDATION
-            state.message = "Analysis finished. Review the plan before starting the transfer."
+            if gap_found:
+                state.message = (
+                    f"The analysis found nothing, but verification found "
+                    f"{plan.transfers} files missing on the destination. "
+                    f"Review the plan before starting the transfer."
+                )
+            else:
+                state.message = "Analysis finished. Review the plan before starting the transfer."
             self._save_plan(profile.id, plan)
 
         state.started_at = None
@@ -918,23 +971,7 @@ class SyncEngine:
             verify_error = str(exc)
 
         if missing:
-            def by_folder(entries) -> list[dict]:
-                groups = {}
-                for entry in entries:
-                    top = entry["path"].split("/", 1)[0] if "/" in entry["path"] else "(root)"
-                    g = groups.setdefault(top, {"folder": top, "count": 0, "bytes": 0})
-                    g["count"] += 1
-                    g["bytes"] += entry["bytes"]
-                return sorted(groups.values(), key=lambda d: d["count"], reverse=True)
-
-            gap = Plan(
-                transfers=len(missing),
-                checks=checked,
-                bytes_to_send=sum(entry["bytes"] for entry in missing),
-                send_samples=sorted(missing, key=lambda e: -e["bytes"]),
-                send_by_folder=by_folder(missing),
-                computed_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
-            )
+            gap = self._plan_from_missing(missing, checked)
             self.history.close_run(
                 run_id,
                 "incomplete",
@@ -960,7 +997,12 @@ class SyncEngine:
         else:
             final_message = base_message + f" Verified complete: {checked:,} files on both sides."
 
-        self.history.close_run(run_id, "success", stats=sync_stats)
+        # The verified flag feeds the card's "last verified transfer"
+        # indicator: a date alone let a stale backup look up to date.
+        self.history.close_run(
+            run_id, "success", stats=sync_stats,
+            details={"verified": not verify_error},
+        )
         state.run_id = None
         state.plan = None
         state.phase = IDLE
