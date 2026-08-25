@@ -38,9 +38,57 @@ if sys.stdout is None or sys.stderr is None:
 
 BASE = Path(__file__).parent
 ICON = BASE / "app" / "static" / "icon.png"
+ICO = BASE / "app" / "static" / "icon.ico"
 SPLASH = BASE / "app" / "static" / "splash.html"
 
 log = logging.getLogger("pcloud-sync.desktop")
+
+
+def _claim_windows_identity() -> None:
+    """Detaches the app from pythonw.exe in the taskbar.
+
+    Without an explicit AppUserModelID, Windows groups the window under
+    the interpreter and shows the interpreter's icon there. Must run
+    before the window exists.
+    """
+    if sys.platform != "win32":
+        return
+    try:
+        import ctypes
+
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("PCloudSync.Desktop")
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _set_windows_icons(window) -> None:
+    """Puts icon.ico on the title bar and the taskbar button.
+
+    Verified on this project: `webview.start(icon=...)` is ignored by
+    pywebview's Windows backend — the window kept pythonw.exe's icon.
+    WM_SETICON on the native handle is what actually works.
+    """
+    if sys.platform != "win32" or not ICO.exists():
+        return
+    try:
+        import ctypes
+
+        user32 = ctypes.windll.user32
+        hwnd = 0
+        try:
+            hwnd = int(window.native.Handle.ToInt64())
+        except Exception:  # noqa: BLE001
+            hwnd = user32.FindWindowW(None, "pCloud Sync")
+        if not hwnd:
+            return
+        IMAGE_ICON, LR_LOADFROMFILE = 1, 0x10
+        WM_SETICON, ICON_SMALL, ICON_BIG = 0x80, 0, 1
+        for which, size in ((ICON_SMALL, 16), (ICON_BIG, 32)):
+            hicon = user32.LoadImageW(None, str(ICO), IMAGE_ICON, size, size, LR_LOADFROMFILE)
+            if hicon:
+                user32.SendMessageW(hwnd, WM_SETICON, which, hicon)
+    except Exception as exc:  # noqa: BLE001
+        log.info("Window icon not applied (%s).", exc)
 
 
 def _port_open(host: str, port: int, timeout: float = 0.3) -> bool:
@@ -293,6 +341,7 @@ class Boot:
 
 
 def run() -> int:
+    _claim_windows_identity()
     try:
         import webview
     except Exception as exc:  # noqa: BLE001
@@ -315,8 +364,11 @@ def run() -> int:
 
     boot = Boot(window)
     # The splash page may not be rendered yet when the first statuses are
-    # pushed; replay the current one as soon as the window exists.
+    # pushed; replay the current one as soon as the window exists. The
+    # icon is applied at the same moment: the native handle exists, and
+    # the splash must already carry it, not just the interface.
     window.events.shown += boot.push_last
+    window.events.shown += lambda: _set_windows_icons(window)
     threading.Thread(target=boot.run, daemon=True).start()
 
     try:
