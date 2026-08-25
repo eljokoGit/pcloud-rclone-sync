@@ -108,7 +108,7 @@ class RcloneEngine:
             creationflags=creationflags,
         )
 
-        for _ in range(50):  # 10 s at most
+        for _ in range(200):  # 10 s at most
             if _port_open(self.host, self.port):
                 return
             if self._process.poll() is not None:
@@ -117,7 +117,7 @@ class RcloneEngine:
                 except OSError:
                     detail = ""
                 raise RcloneError(f"The rclone engine did not start:\n{detail.strip()}")
-            time.sleep(0.2)
+            time.sleep(0.05)
 
         raise RcloneError("The rclone engine did not respond in time.")
 

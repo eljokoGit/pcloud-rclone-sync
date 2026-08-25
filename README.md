@@ -159,6 +159,12 @@ deletions. When it concludes there is nothing to transfer, that claim is
 itself verified by an independent listing comparison before being shown —
 anything found missing becomes the plan instead.
 
+After an update, the banner offers **Restart now**: the application
+closes and relaunches itself. At startup the window opens immediately on a
+status screen naming the phase actually in progress (starting the rclone
+engine, loading profiles, …) instead of staying invisible until everything
+is ready.
+
 Between transfers, a periodic **spot check** (every `drift_check_hours`,
 24 by default) runs the same read-only comparison in the background and
 keeps each profile's card honest: "spot check <when>: in sync", or the

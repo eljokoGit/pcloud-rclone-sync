@@ -883,10 +883,12 @@ loadHistory();
 const updateBox = document.getElementById("update");
 const updateText = document.getElementById("update-text");
 const updateBtn = document.getElementById("update-btn");
+const restartBtn = document.getElementById("update-restart");
 
 function renderUpdate(u) {
   const st = (u.status || {}).state || "idle";
   updateText.classList.remove("is-error");
+  restartBtn.hidden = st !== "done";
   if (st === "downloading" || st === "installing") {
     updateText.textContent = "Updating…";
     updateBtn.hidden = true;
@@ -894,7 +896,7 @@ function renderUpdate(u) {
     return "poll";
   }
   if (st === "done") {
-    updateText.textContent = (u.status.detail || "Update installed.") ;
+    updateText.textContent = u.status.detail || "Update installed.";
     updateBtn.hidden = true;
     updateBox.hidden = false;
     return "stop";
@@ -939,6 +941,20 @@ updateBtn.addEventListener("click", async () => {
     toast(err.message);
   } finally {
     updateBtn.disabled = false;
+  }
+});
+
+restartBtn.addEventListener("click", async () => {
+  restartBtn.disabled = true;
+  try {
+    await api("/api/restart", { method: "POST" });
+    // The process exits and relaunches itself: this window is about to
+    // close, the new instance opens its own.
+    updateText.textContent = "Restarting…";
+    restartBtn.hidden = true;
+  } catch (err) {
+    toast(err.message);
+    restartBtn.disabled = false;
   }
 });
 

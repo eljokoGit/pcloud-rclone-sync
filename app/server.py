@@ -3,6 +3,11 @@
 from __future__ import annotations
 
 import logging
+import os
+import subprocess
+import sys
+import threading
+import time
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -116,6 +121,43 @@ def create_app(
             return {"available": False, "disabled": True, "status": updater.status}
         info = updater.check(force=bool(force))
         return {**info, "status": updater.status}
+
+    def _relaunch() -> None:
+        # Let the HTTP response leave before the process dies, then spawn
+        # the same command line detached and exit. The child waits for the
+        # port to free (PCLOUDSYNC_RESTART) before its "already running"
+        # check — without that it would find this dying instance and open
+        # its interface instead of starting.
+        time.sleep(0.5)
+        log.info("Restarting on user request.")
+        for stop in (scheduler.stop, rclone.stop, history.close):
+            try:
+                stop()
+            except Exception:  # noqa: BLE001 - dying anyway, restart first
+                pass
+        flags = 0
+        if sys.platform == "win32":
+            flags = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
+        subprocess.Popen(
+            [sys.executable] + sys.argv,
+            cwd=os.getcwd(),
+            env={**os.environ, "PCLOUDSYNC_RESTART": "1"},
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            creationflags=flags,
+        )
+        os._exit(0)
+
+    @app.post("/api/restart")
+    def restart():
+        # Same guard as the update: killing the process under a running
+        # transfer would leave a half-finished sync behind.
+        for p in store.profiles:
+            if engine.busy(p.id):
+                raise HTTPException(409, "Finish or stop running operations before restarting.")
+        threading.Thread(target=_relaunch, daemon=True).start()
+        return {"ok": True}
 
     @app.post("/api/update/apply")
     def update_apply():

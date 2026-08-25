@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>pCloud Sync</title>
+<style>
+  html, body {
+    margin: 0; height: 100%;
+    background: #0C1418; color: #C8D6DC;
+    font: 15px/1.5 "Segoe UI", system-ui, sans-serif;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .boot { text-align: center; }
+  .boot__name {
+    font-size: 22px; font-weight: 600; letter-spacing: .04em; color: #E4EEF2;
+  }
+  .boot__status {
+    margin-top: 18px; color: #4E6975;
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+  }
+  .boot__dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: #3FA7C4; animation: pulse 1.2s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: .25; transform: scale(.8); }
+    50%      { opacity: 1;   transform: scale(1); }
+  }
+  .boot__elapsed { margin-top: 8px; font-size: 12px; color: #4E6975; }
+  .boot__error { display: none; max-width: 520px; margin-top: 18px; text-align: left; }
+  .boot__error h2 { font-size: 16px; color: #E8A13C; margin: 0 0 8px; }
+  .boot__error p  { margin: 0; color: #C8D6DC; white-space: pre-wrap; }
+  .is-failed .boot__status, .is-failed .boot__elapsed { display: none; }
+  .is-failed .boot__error { display: block; }
+</style>
+</head>
+<body>
+<div class="boot" id="boot">
+  <div class="boot__name">pCloud Sync</div>
+  <div class="boot__status">
+    <span class="boot__dot"></span>
+    <span id="status">starting</span>
+  </div>
+  <div class="boot__elapsed"><span id="elapsed">0.0</span> s</div>
+  <div class="boot__error">
+    <h2 id="error-title"></h2>
+    <p id="error-detail"></p>
+  </div>
+</div>
+<script>
+  var t0 = Date.now();
+  setInterval(function () {
+    document.getElementById("elapsed").textContent =
+      ((Date.now() - t0) / 1000).toFixed(1);
+  }, 100);
+  function setStatus(text) {
+    document.getElementById("status").textContent = text;
+  }
+  function setError(title, detail) {
+    document.getElementById("error-title").textContent = title;
+    document.getElementById("error-detail").textContent = detail;
+    document.getElementById("boot").classList.add("is-failed");
+  }
+</script>
+</body>
+</html>

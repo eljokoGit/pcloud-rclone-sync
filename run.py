@@ -10,9 +10,12 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import signal
+import socket
 import sys
 import threading
+import time
 import webbrowser
 from pathlib import Path
 
@@ -61,6 +64,16 @@ def main() -> int:
 
     setup_logging(cfg.log_dir)
     log = logging.getLogger("pcloud-sync")
+
+    if os.environ.get("PCLOUDSYNC_RESTART"):
+        # Spawned by /api/restart: the parent is still releasing the port.
+        deadline = time.time() + 15
+        while time.time() < deadline:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+                probe.settimeout(0.1)
+                if probe.connect_ex(("127.0.0.1", cfg.port)) != 0:
+                    break
+            time.sleep(0.2)
 
     rclone = RcloneEngine(cfg.rclone_binary, cfg.rc_port, cfg.log_dir)
     try:
