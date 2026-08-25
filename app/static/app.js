@@ -445,6 +445,24 @@ function renderCard(profile) {
     lastRun.textContent = "no transfer recorded";
   }
 
+  // Read-only spot checks keep the completeness signal alive between
+  // transfers; every real verification refreshes the same record.
+  const driftEl = card.querySelector("[data-drift]");
+  const drift = profile.drift;
+  driftEl.classList.remove("is-drift");
+  if (drift && drift.checked_at) {
+    if (drift.missing > 0) {
+      driftEl.textContent = `spot check ${when(drift.checked_at)}: `
+        + `${count(drift.missing)} files missing (${bytes(drift.bytes)})`;
+      driftEl.classList.add("is-drift");
+    } else {
+      driftEl.textContent = `spot check ${when(drift.checked_at)}: in sync`;
+    }
+    driftEl.hidden = false;
+  } else {
+    driftEl.hidden = true;
+  }
+
   renderVerdict(card, st.plan);
   renderWire(card, st.plan);
   renderFigures(card, st.plan, st.live, st.phase === "analysis");

@@ -207,6 +207,9 @@ main {
 
 .card__timing .is-unverified { color: var(--wire); }
 
+.card__timing [data-drift] { color: var(--ink-faint); }
+.card__timing .is-drift { color: var(--wire); }
+
 /* step rail: the cycle is a real sequence, not decoration */
 
 .rail {

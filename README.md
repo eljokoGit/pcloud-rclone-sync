@@ -159,6 +159,12 @@ deletions. When it concludes there is nothing to transfer, that claim is
 itself verified by an independent listing comparison before being shown —
 anything found missing becomes the plan instead.
 
+Between transfers, a periodic **spot check** (every `drift_check_hours`,
+24 by default) runs the same read-only comparison in the background and
+keeps each profile's card honest: "spot check <when>: in sync", or the
+number of files missing on the destination, in amber. It changes nothing
+and never runs while an operation is active.
+
 **Review the plan.** The two-track bar shows the proportion between what
 the server handles for free (green) and what has to cross your uplink
 (amber). If deletions are planned, click the figure to open the detailed

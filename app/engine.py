@@ -311,7 +311,83 @@ class SyncEngine:
         # path -> (timestamp, exists). Path.exists() on a dead network drive
         # can block for seconds, and snapshot() runs on every UI poll.
         self._exists_cache: dict[str, tuple[float, bool]] = {}
+        # Last drift check per profile, persisted so the card's signal
+        # survives restarts. Refreshed by every real verification too.
+        self._drift_file = config.profiles_file.parent / "drift.json"
+        self._drift: dict[str, dict] = self._load_drift()
+        self._drift_running = False
         self._restore_plans()
+
+    def _load_drift(self) -> dict:
+        try:
+            raw = json.loads(self._drift_file.read_text(encoding="utf-8"))
+            return raw if isinstance(raw, dict) else {}
+        except (OSError, ValueError):
+            return {}
+
+    def _save_drift(self) -> None:
+        try:
+            tmp = self._drift_file.with_suffix(".json.tmp")
+            tmp.write_text(json.dumps(self._drift), encoding="utf-8")
+            tmp.replace(self._drift_file)
+        except OSError:
+            pass
+
+    def _record_drift(self, profile_id: str, missing: int, missing_bytes: int) -> None:
+        self._drift[profile_id] = {
+            "checked_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "missing": int(missing),
+            "bytes": int(missing_bytes),
+        }
+        self._save_drift()
+
+    def drift_due(self, profile_id: str, hours: float) -> bool:
+        record = self._drift.get(profile_id)
+        if record is None:
+            return True
+        try:
+            checked = datetime.fromisoformat(record["checked_at"])
+        except (KeyError, TypeError, ValueError):
+            return True
+        age = datetime.now(timezone.utc) - checked
+        return age.total_seconds() >= hours * 3600
+
+    def start_drift_check(self, profile_id: str) -> bool:
+        """Background, read-only spot check of the backup's completeness.
+
+        Two listings and a diff, nothing else: it does not read the shared
+        engine log, modifies nothing, and never runs while an operation is
+        active or another check is in flight.
+        """
+        with self._lock:
+            if self._drift_running or self._busy_profile() is not None:
+                return False
+            profile = self.store.get(profile_id)
+            if profile is None:
+                return False
+            self._drift_running = True
+
+        def run() -> None:
+            try:
+                state = State()
+                rules = self._exclude_rules(profile, state)
+                missing, _checked = self._verify_completeness(profile, rules, state)
+                # An operation that started meanwhile invalidates this
+                # listing: its own verification will refresh the record,
+                # and a stale pre-transfer result must not overwrite it.
+                if self._busy_profile() is None:
+                    self._record_drift(profile.id, len(missing),
+                                       sum(e["bytes"] for e in missing))
+                else:
+                    log.info("%s: drift check discarded, an operation started.",
+                             profile_id)
+            except Exception as exc:  # noqa: BLE001 - a failed spot check keeps the last result
+                log.info("%s: drift check failed: %s", profile_id, exc)
+            finally:
+                self._drift_running = False
+
+        threading.Thread(target=run, daemon=True).start()
+        return True
 
     # -- plan persistence -------------------------------------------------
 
@@ -387,6 +463,7 @@ class SyncEngine:
                 "state": state.to_dict(),
                 "last_success": last,
                 "last_verified": self.history.last_verified(profile.id),
+                "drift": self._drift.get(profile.id),
                 "local_exists": self._local_exists(profile.local),
             }
         return out
@@ -464,6 +541,9 @@ class SyncEngine:
             self._states.pop(profile_id, None)
         self._threads.pop(profile_id, None)
         self._drop_plan(profile_id)
+        if profile_id in self._drift:
+            self._drift.pop(profile_id, None)
+            self._save_drift()
 
     def _reset(self, profile_id: str, message: str = "") -> None:
         with self._lock:
@@ -851,8 +931,10 @@ class SyncEngine:
             if missing:
                 plan = self._plan_from_missing(missing, checked_count)
                 gap_found = True
+                self._record_drift(profile.id, len(missing), plan.bytes_to_send)
             elif not verify_note:
                 verify_note = f" Verified: {checked_count:,} files on both sides."
+                self._record_drift(profile.id, 0, 0)
 
         state.plan = plan
         state.run_id = None
@@ -972,6 +1054,7 @@ class SyncEngine:
 
         if missing:
             gap = self._plan_from_missing(missing, checked)
+            self._record_drift(profile.id, len(missing), gap.bytes_to_send)
             self.history.close_run(
                 run_id,
                 "incomplete",
@@ -996,6 +1079,9 @@ class SyncEngine:
             final_message = base_message + f" Completeness could not be verified: {verify_error}"
         else:
             final_message = base_message + f" Verified complete: {checked:,} files on both sides."
+
+        if not verify_error:
+            self._record_drift(profile.id, 0, 0)
 
         # The verified flag feeds the card's "last verified transfer"
         # indicator: a date alone let a stale backup look up to date.

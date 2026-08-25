@@ -54,6 +54,12 @@ update_check: true
 # backup, or the tool will upload what the client deliberately left behind.
 skip_hidden: false
 
+# Every N hours, when the engine is idle, each backup gets a read-only
+# spot check: both sides are listed and compared (no hashing, no changes)
+# and the card shows "spot check <when>: in sync" or the number of files
+# missing on the destination. 0 disables it.
+drift_check_hours: 24
+
 # Files ignored everywhere. Useless in a backup, and they pollute the
 # deletion reports.
 exclude:

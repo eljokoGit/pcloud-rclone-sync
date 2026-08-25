@@ -94,4 +94,16 @@ class Scheduler:
                     self._fired[profile.id] = stamp
                     self._save_fired()
 
+            # Lightweight drift pass: read-only spot checks that keep the
+            # card's completeness signal alive between transfers. The
+            # engine refuses to start one while any operation runs.
+            hours = getattr(self.config, "drift_check_hours", 0)
+            if hours and hours > 0:
+                for profile in self.store.profiles:
+                    if not profile.enabled:
+                        continue
+                    if self.engine.drift_due(profile.id, hours):
+                        if self.engine.start_drift_check(profile.id):
+                            break  # one at a time; others follow next pass
+
             self._stop.wait(20)
