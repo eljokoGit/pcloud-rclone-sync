@@ -19,6 +19,7 @@ import re
 import json
 import stat as stat_module
 import threading
+import unicodedata
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -265,6 +266,7 @@ class LogTail:
     def __init__(self, path: Path) -> None:
         self.path = path
         self.position = path.stat().st_size if path.exists() else 0
+        self.undecodable = 0
 
     def read_new(self) -> list[str]:
         if not self.path.exists():
@@ -285,7 +287,22 @@ class LogTail:
         if cut < 0:
             return []
         self.position += cut + 1
-        return blob[:cut].decode("utf-8", errors="replace").splitlines()
+        text = blob[:cut].decode("utf-8", errors="replace")
+
+        # errors="replace" is deliberate: one malformed byte must not abort a
+        # forty-minute analysis, which would report "analysis failed" about an
+        # analysis that actually worked. But a silent U+FFFD would corrupt a
+        # path in the plan without a word, so the substitutions are counted
+        # and reported instead of passing unnoticed.
+        replaced = text.count("�")
+        if replaced:
+            self.undecodable += replaced
+            log.warning(
+                "%s: %d undecodable byte(s) in the engine log (%d for this "
+                "operation); the paths shown for those lines may be inexact.",
+                self.path.name, replaced, self.undecodable,
+            )
+        return text.splitlines()
 
 
 class SyncEngine:
@@ -670,11 +687,26 @@ class SyncEngine:
         dst = self.rclone.list_files(profile.remote, exclude_rules)
         if state.cancelled:
             raise Cancelled()
-        missing = [
-            {"path": path, "bytes": max(size, 0)}
-            for path, size in src.items()
-            if path not in dst or (size >= 0 and dst[path] >= 0 and dst[path] != size)
-        ]
+
+        # Both sides are compared in NFC. rclone itself normalises unicode
+        # when matching source and destination (fs/sync/sync.go v1.75:
+        # noUnicodeNormalization defaults to false), so a name stored NFD on
+        # one side and NFC on the other is the same file to the sync — but
+        # two different Python strings here, which would report a file as
+        # missing and offer to re-upload what is already there. The reported
+        # path stays the source's own spelling.
+        dst_nfc = {
+            unicodedata.normalize("NFC", path): size for path, size in dst.items()
+        }
+        missing = []
+        for path, size in src.items():
+            key = unicodedata.normalize("NFC", path)
+            if key not in dst_nfc:
+                missing.append({"path": path, "bytes": max(size, 0)})
+                continue
+            other = dst_nfc[key]
+            if size >= 0 and other >= 0 and other != size:
+                missing.append({"path": path, "bytes": max(size, 0)})
         log.info(
             "%s: completeness check - %d source files, %d missing or mismatched (%.1f s).",
             profile.id, len(src), len(missing), time.time() - started,

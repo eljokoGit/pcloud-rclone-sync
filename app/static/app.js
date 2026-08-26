@@ -1122,7 +1122,11 @@ async function loadLocal(path) {
       box.onchange = () => togglePick(data.path, box.checked, row);
       const name = document.createElement("span");
       name.className = "prow__name";
-      name.innerHTML = `<em>This whole folder</em> — ${data.path}`;
+      // The path goes through textContent: pCloud accepts characters
+      // Windows forbids, "<" among them, and a folder name is free text.
+      const nameEm = document.createElement("em");
+      nameEm.textContent = "This whole folder";
+      name.append(nameEm, ` — ${data.path}`);
       name.onclick = () => { box.checked = !box.checked; box.onchange(); };
       row.append(box, name);
       li.appendChild(row);
@@ -1200,7 +1204,9 @@ async function loadRemote(remote, path) {
       box.onchange = () => setRemoteBase(full);
       const name = document.createElement("span");
       name.className = "prow__name";
-      name.innerHTML = `<em>Send here</em> — ${full}`;
+      const sendEm = document.createElement("em");
+      sendEm.textContent = "Send here";
+      name.append(sendEm, ` — ${full}`);
       name.onclick = () => setRemoteBase(full);
       row.append(box, name);
       li.appendChild(row);
