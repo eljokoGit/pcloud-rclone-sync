@@ -192,13 +192,21 @@ class RcloneEngine:
         """Starts an asynchronous synchronisation. Returns the job id."""
         config = {
             "DryRun": dry_run,
-            "TrackRenames": True,
-            "TrackRenamesStrategy": "hash",
             "Transfers": options.get("transfers", 8),
             "Checkers": options.get("checkers", 16),
             "Retries": options.get("retries", 5),
             "LowLevelRetries": options.get("low_level_retries", 20),
         }
+        # Set on the analysis and on the transfer alike: they must see the
+        # same operation, or the validated plan would describe something the
+        # transfer does not do. Off by default — a server-side move is
+        # invisible to a pCloud client watching the same folders, which then
+        # "repairs" the divergence; without it a move is an ordinary delete
+        # plus upload, which every client handles.
+        if options.get("track_renames"):
+            config["TrackRenames"] = True
+            config["TrackRenamesStrategy"] = "hash"
+
         if max_delete is not None and max_delete >= 0:
             # Hard ceiling enforced by the engine itself: verified on v1.75,
             # rclone deletes at most this many files, then fails the sync

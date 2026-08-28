@@ -828,6 +828,15 @@ async function refresh() {
     const spared = data.totals?.moved || 0;
     document.getElementById("meter-spared").textContent = count(spared);
     document.querySelector(".meter").classList.toggle("is-zero", spared === 0);
+
+    // With server-side repositioning off the figure can never grow again.
+    // It is dated rather than hidden: the files really were repositioned,
+    // and an undated frozen counter would read as still current.
+    const unit = document.getElementById("meter-spared-unit");
+    const until = data.totals?.moved_until;
+    unit.textContent = data.track_renames === false && spared > 0 && until
+      ? `files repositioned by the server before ${when(until)}`
+      : "files repositioned by the server since installation";
   } catch (err) {
     toast(err.message);
   }

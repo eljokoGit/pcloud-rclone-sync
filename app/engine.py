@@ -760,6 +760,7 @@ class SyncEngine:
             "retries": self.config.retries,
             "low_level_retries": self.config.low_level_retries,
             "bandwidth_limit": self.config.bandwidth_limit,
+            "track_renames": self.config.track_renames,
         }
 
     def _watch(

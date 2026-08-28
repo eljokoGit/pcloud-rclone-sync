@@ -19,11 +19,20 @@ sees deletions followed by creations and re-uploads everything. On a 100 GB
 photo library, that means days of upload for files already present on the
 server.
 
-This application relies on rclone and its `--track-renames` option: moved
+This application can use rclone's `--track-renames` option, in which moved
 or renamed files are repositioned **by the pCloud server**, without a
 single byte leaving your machine. Only genuinely new content is uploaded.
 
 Measured on a 100 GB reorganisation: **3.95 GB transferred instead of 99 GB.**
+
+**This option is off by default** (`track_renames` in `config.yaml`). A
+server-side move rewrites the remote tree without the pCloud client's
+knowledge, and a client backing up the same folders treats that divergence
+as damage to repair — with deletions and downloads of its own. Leave it off
+whenever the pCloud client watches the folders you back up here; a moved
+file then becomes an ordinary deletion plus upload, which every client
+handles. Turn it on if nothing else syncs those folders, and the bandwidth
+saving is yours.
 
 ---
 

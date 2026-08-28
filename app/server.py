@@ -109,6 +109,9 @@ def create_app(
             "profiles": profiles,
             "order": [p.id for p in store.profiles],
             "totals": history.totals(),
+            # The interface dates the all-time "moved" figure when server-side
+            # repositioning is off: the counter cannot grow any more.
+            "track_renames": config.track_renames,
         }
 
     @app.get("/api/ping")

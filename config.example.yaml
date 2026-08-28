@@ -31,6 +31,15 @@ rclone:
   retries: 5
   low_level_retries: 20
 
+  # Reposition moved files on the server instead of re-uploading them
+  # (rclone --track-renames). Saves the bandwidth of a reorganisation, but
+  # it rewrites the remote tree without the pCloud client's knowledge: a
+  # client backing up the same folders sees a divergence it did not cause
+  # and repairs it, with deletions and downloads. Leave it off whenever the
+  # pCloud client watches the folders you back up here. With it off, a moved
+  # file is an ordinary delete plus upload, which every client handles.
+  track_renames: false
+
   # Bandwidth limit. Empty = unlimited.
   # Example: "08:00,2M 22:00,off" to throttle from 8am to 10pm only
   bandwidth_limit: ""

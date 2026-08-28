@@ -192,7 +192,12 @@ class History:
             return cur.rowcount
 
     def totals(self) -> dict:
-        """All-time totals: bytes uploaded and files moved server-side."""
+        """All-time totals: bytes uploaded and files moved server-side.
+
+        `moved_until` dates the last transfer that actually repositioned
+        something. With server-side moves disabled the total can no longer
+        grow, and a frozen counter with no date would read as current.
+        """
         with self._lock:
             row = self._conn.execute(
                 "SELECT COALESCE(SUM(bytes),0) AS bytes,"
@@ -200,7 +205,11 @@ class History:
                 " COUNT(*) AS runs"
                 " FROM runs WHERE kind='transfer' AND status='success'"
             ).fetchone()
-        return dict(row)
+            last = self._conn.execute(
+                "SELECT MAX(ended_at) AS moved_until FROM runs"
+                " WHERE kind='transfer' AND status='success' AND moved > 0"
+            ).fetchone()
+        return {**dict(row), "moved_until": last["moved_until"] if last else None}
 
     def close(self) -> None:
         with self._lock:

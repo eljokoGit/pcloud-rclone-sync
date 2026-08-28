@@ -63,6 +63,12 @@ class Config:
     retries: int = 5
     low_level_retries: int = 20
     bandwidth_limit: str = ""
+    # Server-side repositioning of moved files. Off by default: it changes
+    # the remote tree behind the pCloud client's back, and a client watching
+    # the same folders repairs the divergence it sees with deletions and
+    # downloads. Only worth enabling when no pCloud client watches the
+    # backed-up folders.
+    track_renames: bool = False
 
     database: Path = Path("history.db")
     profiles_file: Path = Path("profiles.json")
@@ -99,6 +105,7 @@ def load(path: str | Path) -> Config:
         retries=int(rclone.get("retries", 5)),
         low_level_retries=int(rclone.get("low_level_retries", 20)),
         bandwidth_limit=rclone.get("bandwidth_limit", "") or "",
+        track_renames=bool(rclone.get("track_renames", False)),
         database=Path(raw.get("database") or data_dir / "history.db"),
         profiles_file=Path(
             raw.get("profiles_file")
